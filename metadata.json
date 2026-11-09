@@ -1,0 +1,8 @@
+{
+  "name": "Remix After-Sales Repair and Warranty Tracker",
+  "description": "ระบบบริการหลังการขายสำหรับติดตามสถานะการแจ้งซ่อม ประวัติการรับประกัน สรุปยอดค่าใช้จ่าย แดชบอร์ดสรุปรายเดือน แผนที่ตำแหน่งช่างเทคนิค และระบบแจ้งเตือน LINE Notify ซิงก์ข้อมูลกับ Google Sheets",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
