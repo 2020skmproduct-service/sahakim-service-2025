@@ -37,7 +37,8 @@ import {
   PenTool,
   RotateCcw,
   ImageIcon,
-  Upload
+  Upload,
+  MessageSquare
 } from 'lucide-react';
 import {
   PieChart,
@@ -64,6 +65,7 @@ import {
 } from './types';
 import { SignaturePadCanvas } from './components/SignaturePadCanvas';
 import { GoogleSheetsIntegrationModal } from './components/GoogleSheetsIntegrationModal';
+import { LineNotificationModal } from './components/LineNotificationModal';
 import { getAccessToken } from './services/googleAuth';
 import { syncTicketsToSpreadsheet } from './services/googleSheets';
 import {
@@ -761,6 +763,7 @@ export function App() {
   });
   const [gasModalOpen, setGasModalOpen] = useState(false);
   const [isGoogleSheetsModalOpen, setIsGoogleSheetsModalOpen] = useState(false);
+  const [isLineModalOpen, setIsLineModalOpen] = useState(false);
   const [googleSheetId, setGoogleSheetId] = useState<string>(() => {
     return localStorage.getItem('sahakim_google_sheet_id') || '';
   });
@@ -4191,6 +4194,16 @@ export function App() {
 
               <button
                 type="button"
+                onClick={() => setIsLineModalOpen(true)}
+                className="bg-[#06C755] hover:bg-[#05b34c] text-white px-3.5 py-1.5 rounded-xl font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
+                title="จัดการและทดสอบระบบแจ้งเตือนผ่าน LINE (@389fyhbl)"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                <span>💬 แจ้งเตือน LINE (@389fyhbl)</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setMasterDataModalOpen(true)}
                 className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-xl font-bold inline-flex items-center gap-1.5 cursor-pointer"
               >
@@ -5922,11 +5935,19 @@ export function App() {
                     </button>
                     <button
                       type="button"
+                      onClick={() => setIsLineModalOpen(true)}
+                      className="bg-[#06C755] hover:bg-[#05b34c] text-white px-3.5 py-1.5 rounded-lg font-bold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer shadow-xs"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 text-white" />
+                      <span>แจ้งเตือน LINE (@389fyhbl)</span>
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setGasModalOpen(true)}
-                      className="bg-teal-700 hover:bg-teal-800 text-white px-3.5 py-1.5 rounded-lg font-semibold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+                      className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3.5 py-1.5 rounded-lg font-semibold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
                     >
                       <Send className="w-3.5 h-3.5" />
-                      <span>แจ้งเตือน LINE &amp; Apps Script</span>
+                      <span>Apps Script URL</span>
                     </button>
                     <button
                       type="button"
@@ -11202,6 +11223,21 @@ export function App() {
         onToggleAutoSync={handleToggleGoogleAutoSync}
         lastSyncedAt={googleLastSyncedAt}
         onSetLastSyncedAt={handleSetGoogleLastSyncedAt}
+        showToast={showToast}
+      />
+
+      {/* LINE Official Bot Notification Management Modal */}
+      <LineNotificationModal
+        isOpen={isLineModalOpen}
+        onClose={() => setIsLineModalOpen(false)}
+        tickets={tickets}
+        lineTargetId={lineTargetId}
+        onSetLineTargetId={(id: string) => {
+          setLineTargetId(id);
+          try {
+            localStorage.setItem('sahakim_line_target', id);
+          } catch {}
+        }}
         showToast={showToast}
       />
 
