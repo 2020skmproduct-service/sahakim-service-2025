@@ -23,6 +23,7 @@ interface LineStoredConfig {
   groupIds: string[];
   userIds: string[];
   gasWebAppUrl?: string;
+  discordWebhookUrl?: string;
   cachedAccessToken?: string;
   tokenExpiresAt?: number;
   updatedAt?: string;
@@ -74,6 +75,7 @@ function loadLineConfig(): LineStoredConfig {
         groupIds: Array.isArray(parsed.groupIds) ? parsed.groupIds : [],
         userIds: Array.isArray(parsed.userIds) ? parsed.userIds : [],
         gasWebAppUrl: parsed.gasWebAppUrl || '',
+        discordWebhookUrl: parsed.discordWebhookUrl || '',
         cachedAccessToken: parsed.cachedAccessToken,
         tokenExpiresAt: parsed.tokenExpiresAt,
         updatedAt: parsed.updatedAt
@@ -689,6 +691,7 @@ async function startServer() {
     try {
       const { generateStandaloneHtmlString } = await import('./src/standaloneGenerator.js');
       const state = loadOnlineState();
+      const cfg = loadLineConfig();
       const html = generateStandaloneHtmlString(
         state.tickets || [],
         state.technicians || [],
@@ -697,10 +700,11 @@ async function startServer() {
         [],
         'admin123',
         '1234',
+        cfg.gasWebAppUrl || '',
         '',
         '',
-        '',
-        state.supervisors || []
+        state.supervisors || [],
+        cfg.discordWebhookUrl || ''
       );
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.setHeader('Content-Disposition', 'attachment; filename="index.html"');
@@ -726,10 +730,42 @@ async function startServer() {
         groupIds: cfg.groupIds,
         userIds: cfg.userIds,
         gasWebAppUrl: cfg.gasWebAppUrl || '',
+        discordWebhookUrl: cfg.discordWebhookUrl || process.env.DISCORD_WEBHOOK_URL || '',
         updatedAt: cfg.updatedAt || null
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
+      res.status(500).json({ status: 'error', message: msg });
+    }
+  });
+
+  app.get('/api/line/quota', async (_req, res) => {
+    try {
+      const token = await getValidLineAccessToken();
+      const quotaRes = await fetch('https://api.line.me/v2/bot/message/quota', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const quotaData = await quotaRes.json().catch(() => ({}));
+
+      const consumRes = await fetch('https://api.line.me/v2/bot/message/quota/consumption', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const consumData = await consumRes.json().catch(() => ({}));
+
+      const limit = Number(quotaData?.value) || 300;
+      const used = Number(consumData?.totalUsage) || 0;
+      const isExceeded = used >= limit;
+
+      res.json({
+        status: 'ok',
+        limit,
+        used,
+        remaining: Math.max(0, limit - used),
+        type: quotaData?.type || 'limited',
+        isExceeded
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to fetch quota';
       res.status(500).json({ status: 'error', message: msg });
     }
   });
@@ -882,6 +918,70 @@ async function startServer() {
         error: msg,
         quotaExceeded: msg.includes('429') || msg.includes('monthly limit')
       });
+    }
+  });
+
+  // Save Discord Webhook configuration
+  app.post('/api/discord/config', (req, res) => {
+    try {
+      const { webhookUrl } = req.body || {};
+      const cfg = loadLineConfig();
+      cfg.discordWebhookUrl = typeof webhookUrl === 'string' ? webhookUrl.trim() : '';
+      cfg.updatedAt = new Date().toISOString();
+      saveLineConfig(cfg);
+      return res.json({ status: 'ok', discordWebhookUrl: cfg.discordWebhookUrl });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to save Discord config';
+      return res.status(500).json({ error: msg });
+    }
+  });
+
+  // Send Discord Webhook notification via server proxy (bypasses browser restrictions and supports embedded rich cards)
+  app.post('/api/discord/notify', async (req, res) => {
+    try {
+      const cfg = loadLineConfig();
+      const { webhookUrl, body, message } = req.body || {};
+      const targetUrl =
+        (webhookUrl && String(webhookUrl).trim()) ||
+        cfg.discordWebhookUrl ||
+        process.env.DISCORD_WEBHOOK_URL ||
+        '';
+
+      if (!targetUrl || !targetUrl.startsWith('https://discord.com/api/webhooks/')) {
+        return res.status(400).json({
+          error:
+            'Discord Webhook URL ไม่ถูกต้อง กรุณากรอก Webhook URL ที่ขึ้นต้นด้วย https://discord.com/api/webhooks/...'
+        });
+      }
+
+      if (webhookUrl && webhookUrl.trim() !== cfg.discordWebhookUrl) {
+        cfg.discordWebhookUrl = webhookUrl.trim();
+        saveLineConfig(cfg);
+      }
+
+      const payload = body || {
+        content: message || '🔔 แจ้งเตือนจากระบบบริการ สหคิมมอเตอร์'
+      };
+
+      const discordRes = await fetch(targetUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (discordRes.ok) {
+        return res.json({ status: 'ok', message: 'Discord notification dispatched successfully' });
+      } else {
+        const text = await discordRes.text();
+        return res.status(discordRes.status).json({
+          status: 'error',
+          statusCode: discordRes.status,
+          error: text || `Discord API returned ${discordRes.status}`
+        });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown Discord notification error';
+      return res.status(500).json({ error: msg });
     }
   });
 

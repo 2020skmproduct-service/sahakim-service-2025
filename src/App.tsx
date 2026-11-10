@@ -66,6 +66,8 @@ import {
 import { SignaturePadCanvas } from './components/SignaturePadCanvas';
 import { GoogleSheetsIntegrationModal } from './components/GoogleSheetsIntegrationModal';
 import { LineNotificationModal } from './components/LineNotificationModal';
+import { DiscordNotificationModal } from './components/DiscordNotificationModal';
+import { sendDiscordNotification } from './services/discordNotify';
 import { getAccessToken } from './services/googleAuth';
 import { syncTicketsToSpreadsheet } from './services/googleSheets';
 import {
@@ -491,25 +493,14 @@ export const DEFAULT_SUPERVISORS = [
 
 const INITIAL_TECHS: Technician[] = [];
 
-export const isDemoTechnician = (tc: { name?: string; id?: string }): boolean => {
-  if (!tc || !tc.name) return false;
-  const n = tc.name.trim();
-  return (
-    n.includes('วิชัย') ||
-    n.includes('สมชาย') ||
-    n.includes('ประเสริฐ')
-  );
+export const isDemoTechnician = (tc: { name?: string; id?: string; isDemo?: boolean }): boolean => {
+  if (!tc) return false;
+  return Boolean(tc.isDemo || (tc.name && tc.name.includes('[DEMO]')));
 };
 
-export const isDemoTicket = (t: { id?: string; company?: string }): boolean => {
-  if (!t || !t.id) return false;
-  return (
-    t.id === 'SKM-69-001' ||
-    t.id === 'SKM-69-002' ||
-    t.id === 'SKM-69-003' ||
-    (t.company === 'บริษัท สยามอุตสาหกรรม จำกัด' && t.id.startsWith('SKM-69-00')) ||
-    (t.company === 'บริษัท ไทยเคมีคอล เอ็นจิเนียริ่ง จำกัด' && t.id.startsWith('SKM-69-00'))
-  );
+export const isDemoTicket = (t: { id?: string; company?: string; isDemo?: boolean }): boolean => {
+  if (!t) return false;
+  return Boolean(t.isDemo || (t.company && (t.company.includes('[DEMO]') || t.company.includes('ตัวอย่างระบบ (DEMO)'))));
 };
 
 // Production Ready: Clean start without mock demo tickets
@@ -764,6 +755,10 @@ export function App() {
   const [gasModalOpen, setGasModalOpen] = useState(false);
   const [isGoogleSheetsModalOpen, setIsGoogleSheetsModalOpen] = useState(false);
   const [isLineModalOpen, setIsLineModalOpen] = useState(false);
+  const [discordWebhookUrl, setDiscordWebhookUrl] = useState<string>(() => {
+    return localStorage.getItem('sahakim_discord_webhook_url') || '';
+  });
+  const [isDiscordModalOpen, setIsDiscordModalOpen] = useState(false);
   const [googleSheetId, setGoogleSheetId] = useState<string>(() => {
     return localStorage.getItem('sahakim_google_sheet_id') || '';
   });
@@ -806,7 +801,7 @@ export function App() {
   const handleTicketsImportedFromGoogleSheets = (imported: ServiceTicket[]) => {
     if (Array.isArray(imported) && imported.length > 0) {
       setTickets(imported);
-      localStorage.setItem('sahakim_tickets', JSON.stringify(imported));
+      localStorage.setItem('sahakim_tickets_v121', JSON.stringify(imported));
       pushOnlineSharedState(imported, userRole || 'SUPERVISOR');
       showToast(`นำเข้าใบงานจาก Google Sheet ทั้งหมด ${imported.length} รายการเรียบร้อยแล้ว`, 'success');
     }
@@ -873,7 +868,7 @@ export function App() {
   const [techIdToDeleteConfirm, setTechIdToDeleteConfirm] = useState<string | null>(null);
 
   const [tickets, setTickets] = useState<ServiceTicket[]>(() => {
-    const saved = localStorage.getItem('sahakim_tickets_v121');
+    const saved = localStorage.getItem('sahakim_tickets_v121') || localStorage.getItem('sahakim_tickets');
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as ServiceTicket[];
@@ -976,6 +971,12 @@ export function App() {
         const data = await res.json();
         if (data?.gasWebAppUrl && !gasWebAppUrl.trim()) {
           setGasWebAppUrl(data.gasWebAppUrl);
+        }
+        if (data?.discordWebhookUrl && !discordWebhookUrl.trim()) {
+          setDiscordWebhookUrl(data.discordWebhookUrl);
+          try {
+            localStorage.setItem('sahakim_discord_webhook_url', data.discordWebhookUrl);
+          } catch {}
         }
         if (data?.targetId) {
           if (
@@ -1427,7 +1428,8 @@ export function App() {
       gasWebAppUrl,
       lineChannelToken,
       lineTargetId,
-      supervisors
+      supervisors,
+      discordWebhookUrl
     );
   };
 
@@ -1449,7 +1451,8 @@ export function App() {
       gasWebAppUrl,
       lineChannelToken,
       lineTargetId,
-      supervisors
+      supervisors,
+      discordWebhookUrl
     );
     showToast(
       'ดาวน์โหลดไฟล์ index.html ลงโฟลเดอร์ Downloads แล้ว! (หรือกดคัดลอกโค้ดในหน้าต่างนี้ได้เลย)',
@@ -1584,6 +1587,26 @@ export function App() {
     if (lineNotifyText && lineNotifyText.trim()) {
       const lr = await sendLineDirectViaServer(lineNotifyText);
       sentByBackend = lr.ok;
+    }
+
+    // 3. Dispatch Discord Notification (Unlimited, Free, Rich Embed Card)
+    if (discordWebhookUrl && discordWebhookUrl.trim()) {
+      const heading = lineNotifyText
+        ? lineNotifyText.split('\n')[0].replace(/[📢🔔🚨✅👷🔄🎉✍️⏳\[\]]/g, '').trim()
+        : undefined;
+      let matchedTicket = updatedTickets[0];
+      if (lineNotifyText) {
+        const found = updatedTickets.find(
+          (tk) =>
+            lineNotifyText.includes(tk.id) || (tk.docNo && lineNotifyText.includes(tk.docNo))
+        );
+        if (found) matchedTicket = found;
+      }
+      sendDiscordNotification(discordWebhookUrl.trim(), {
+        ticket: matchedTicket,
+        message: lineNotifyText,
+        eventHeading: heading ? `[แจ้งเตือน] ${heading}` : undefined
+      }).catch((err) => console.warn('Discord notification background error:', err));
     }
 
     const targetUrl = (explicitUrl !== undefined ? explicitUrl : gasWebAppUrl).trim();
@@ -1857,6 +1880,20 @@ export function App() {
         'warning'
       );
     }
+
+    if (discordWebhookUrl && discordWebhookUrl.trim()) {
+      sendDiscordNotification(discordWebhookUrl.trim(), {
+        ticket: t,
+        eventHeading: customHeading || '📢 [แชร์ใบงาน - บริษัท สหคิมมอเตอร์ จำกัด]'
+      })
+        .then((dRes) => {
+          if (dRes.ok) {
+            showToast(`ส่งการ์ดแจ้งเตือนใบงาน ${t.id} เข้า Discord เรียบร้อย!`, 'success');
+          }
+        })
+        .catch(() => {});
+    }
+
     if (gasWebAppUrl.trim()) {
       await syncToGoogleSheetAndLine(tickets, sentDirect.ok ? '' : msg);
     }
@@ -4204,6 +4241,18 @@ export function App() {
 
               <button
                 type="button"
+                onClick={() => setIsDiscordModalOpen(true)}
+                className="bg-[#5865F2] hover:bg-[#4752C4] text-white px-3.5 py-1.5 rounded-xl font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
+                title="ตั้งค่าแจ้งเตือนผ่าน Discord Webhook (ฟรี ไม่มีลิมิต)"
+              >
+                <Bell className="w-3.5 h-3.5" />
+                <span>
+                  {discordWebhookUrl ? '🔔 Discord (เชื่อมต่อแล้ว)' : '🔔 แจ้งเตือน Discord (ฟรี)'}
+                </span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setMasterDataModalOpen(true)}
                 className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-xl font-bold inline-flex items-center gap-1.5 cursor-pointer"
               >
@@ -5943,6 +5992,14 @@ export function App() {
                     </button>
                     <button
                       type="button"
+                      onClick={() => setIsDiscordModalOpen(true)}
+                      className="bg-[#5865F2] hover:bg-[#4752C4] text-white px-3.5 py-1.5 rounded-lg font-bold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer shadow-xs"
+                    >
+                      <Bell className="w-3.5 h-3.5 text-white" />
+                      <span>{discordWebhookUrl ? 'Discord (เชื่อมต่อแล้ว)' : 'แจ้งเตือน Discord (ฟรี)'}</span>
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setGasModalOpen(true)}
                       className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3.5 py-1.5 rounded-lg font-semibold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
                     >
@@ -7285,7 +7342,8 @@ export function App() {
                         gasWebAppUrl,
                         lineChannelToken,
                         lineTargetId,
-                        supervisors
+                        supervisors,
+                        discordWebhookUrl
                       );
                       if (navigator.clipboard && navigator.clipboard.writeText) {
                         navigator.clipboard.writeText(code).then(() => {
@@ -11238,6 +11296,26 @@ export function App() {
             localStorage.setItem('sahakim_line_target', id);
           } catch {}
         }}
+        showToast={showToast}
+      />
+
+      {/* Discord Webhook Notification Modal */}
+      <DiscordNotificationModal
+        isOpen={isDiscordModalOpen}
+        onClose={() => setIsDiscordModalOpen(false)}
+        discordWebhookUrl={discordWebhookUrl}
+        onSaveWebhookUrl={(url: string) => {
+          setDiscordWebhookUrl(url);
+          try {
+            localStorage.setItem('sahakim_discord_webhook_url', url);
+          } catch {}
+          fetch('/api/discord/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ webhookUrl: url })
+          }).catch(() => {});
+        }}
+        sampleTicket={tickets[0]}
         showToast={showToast}
       />
 

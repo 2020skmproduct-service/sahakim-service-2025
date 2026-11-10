@@ -198,7 +198,8 @@ export function generateStandaloneHtmlString(
   currentSupervisors: string[] = [
     'หัวหน้าวิศวกรบริการ (Supervisor)',
     'ผู้จัดการฝ่ายบริการ (Service Manager)'
-  ]
+  ],
+  discordWebhookUrl = ''
 ): string {
   // Sanitize local Vite asset URLs so images render properly on GitHub Pages
   const sanitizedTickets = currentTickets.map((t) => ({
@@ -315,6 +316,10 @@ export function generateStandaloneHtmlString(
                     <i class="fa-solid fa-table"></i>
                     <span>☁️ ซิงค์ Google Sheet</span>
                 </button>
+                <button type="button" onclick="openDiscordModal()" class="bg-[#5865F2] hover:bg-[#4752C4] text-white px-3 py-1.5 rounded-xl font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-xs" title="ตั้งค่าการแจ้งเตือน Discord Webhook ฟรี ไม่จำกัด">
+                    <i class="fa-solid fa-bell"></i>
+                    <span id="discord-badge-text">\${discordWebhookUrl ? '🔔 Discord (เชื่อมต่อแล้ว)' : '🔔 แจ้งเตือน Discord (ฟรี)'}</span>
+                </button>
                 <button type="button" onclick="openMasterDataModal('brands')" class="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-xl font-bold inline-flex items-center gap-1.5 cursor-pointer">
                     <i class="fa-solid fa-sliders"></i>
                     <span>⚙️ แก้ไขข้อมูลตั้งต้น</span>
@@ -341,6 +346,10 @@ export function generateStandaloneHtmlString(
     <script>
         window.addEventListener('error', function(e) {
             console.warn('Sahakim Portal Client Error Guard:', e && e.message);
+            const main = document.getElementById('main-content');
+            if (main && (!main.innerHTML || main.innerHTML.trim() === '')) {
+                main.innerHTML = '<div class="max-w-lg mx-auto my-12 p-6 bg-white rounded-2xl border-2 border-rose-300 shadow-xl text-center space-y-4"><div class="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto text-xl font-bold">⚠️</div><h3 class="text-base font-bold text-slate-900">ตรวจพบการแสดงผลขัดข้องชั่วคราว</h3><p class="text-xs text-slate-600 leading-relaxed">ตรวจพบข้อผิดพลาด: ' + (e && e.message ? e.message : 'กรุณากดรีเฟรช') + '</p><div class="flex justify-center gap-2 pt-2"><button onclick="localStorage.removeItem(\\\'sahakim_tickets_v121\\\'); window.location.reload();" class="bg-rose-600 hover:bg-rose-700 text-white font-bold px-4 py-2 rounded-xl text-xs cursor-pointer shadow">🔄 รีเซ็ตแคชและเริ่มใหม่</button><button onclick="window.location.reload();" class="bg-slate-800 hover:bg-slate-700 text-white font-bold px-4 py-2 rounded-xl text-xs cursor-pointer shadow">🔄 ลองใหม่อีกครั้ง</button></div></div>';
+            }
         });
         window.addEventListener('unhandledrejection', function(e) {
             console.warn('Sahakim Portal Promise Error Guard:', e && e.reason);
@@ -357,6 +366,7 @@ export function generateStandaloneHtmlString(
 
         const GAS_CODE_TEMPLATE = ${JSON.stringify(GOOGLE_APPS_SCRIPT_TEMPLATE)};
         let gasWebAppUrl = localStorage.getItem('sahakim_gas_url') || ${JSON.stringify(gasWebAppUrl)};
+        let discordWebhookUrl = localStorage.getItem('sahakim_discord_webhook_url') || ${JSON.stringify(discordWebhookUrl)};
         try {
             localStorage.removeItem('sahakim_line_token');
             localStorage.removeItem('sahakim_line_target');
@@ -562,7 +572,7 @@ export function generateStandaloneHtmlString(
         });
         const CLOUD_SYNC_API_URL = (window.location.origin.includes('run.app') || window.location.origin.includes('localhost'))
             ? (window.location.origin + '/api/online/state')
-            : 'https://ais-pre-brppajwjfafqftfzmicbfo-297429063525.asia-southeast1.run.app/api/online/state';
+            : 'https://ais-pre-5eh5dh3pj3veiystie2rr7-441257203027.asia-northeast1.run.app/api/online/state';
 
         function getEquipmentMasters() {
             return Array.from(new Set([...masterEquipmentTypes, ...customEquipList, "ETC. (กรอกเพิ่มเองได้)"]));
@@ -660,18 +670,13 @@ export function generateStandaloneHtmlString(
         ];
 
         function isDemoTechnician(tc) {
-            if (!tc || !tc.name) return false;
-            const n = String(tc.name).trim();
-            return n.includes('วิชัย') || n.includes('สมชาย') || n.includes('ประเสริฐ');
+            if (!tc) return false;
+            return Boolean(tc.isDemo || (tc.name && String(tc.name).includes('[DEMO]')));
         }
 
         function isDemoTicket(t) {
             if (!t) return false;
-            const id = String(t.id || '').trim();
-            const comp = String(t.company || '').trim();
-            if (id === 'SKM-69-001' || id === 'SKM-69-002' || id === 'SKM-69-003') return true;
-            if (comp.includes('ตัวอย่าง') || comp.includes('เดโม') || comp.includes('Demo')) return true;
-            return false;
+            return Boolean(t.isDemo || (t.company && (String(t.company).includes('[DEMO]') || String(t.company).includes('ตัวอย่างระบบ (DEMO)'))));
         }
 
         let knowledgeTemplates = safeJsonParse(localStorage.getItem('sahakim_knowledge_templates'), ${JSON.stringify(currentTemplates)});
@@ -690,7 +695,7 @@ export function generateStandaloneHtmlString(
             }));
         try { localStorage.setItem('sahakim_technicians', JSON.stringify(initialTechs)); } catch(e) {}
         
-        let savedTickets = localStorage.getItem('sahakim_tickets_v121');
+        let savedTickets = localStorage.getItem('sahakim_tickets_v121') || localStorage.getItem('sahakim_tickets');
         const INITIAL_DEMO_TICKETS = ${JSON.stringify(sanitizedTickets)};
         let parsedSaved = savedTickets ? safeJsonParse(savedTickets, null) : null;
         let initialTickets = (Array.isArray(parsedSaved) ? parsedSaved : INITIAL_DEMO_TICKETS).filter(t => !isDemoTicket(t));
@@ -913,6 +918,16 @@ export function generateStandaloneHtmlString(
             }
         }
 
+        function updateDiscordBadge() {
+            const badge = document.getElementById('discord-badge-text');
+            if (!badge) return;
+            if (discordWebhookUrl) {
+                badge.textContent = '🔔 Discord (เชื่อมต่อแล้ว)';
+            } else {
+                badge.textContent = '🔔 แจ้งเตือน Discord (ฟรี)';
+            }
+        }
+
         function formatTicketLineMessage(t, eventHeading) {
             const portalUrl = window.location.href.startsWith('http') && !window.location.href.includes('localhost')
                 ? window.location.href
@@ -1108,6 +1123,72 @@ export function generateStandaloneHtmlString(
                 } catch (e) {
                     console.warn('Google Sheet Sync warning:', e);
                 }
+            }
+        }
+
+        async function sendDiscordNotificationStandalone(ticket, eventHeading) {
+            if (!discordWebhookUrl || !discordWebhookUrl.trim().startsWith('https://discord.com/api/webhooks/')) return;
+            try {
+                const portalUrl = window.location.href.startsWith('http') && !window.location.href.includes('localhost')
+                    ? window.location.href
+                    : 'https://2020skmproduct-service.github.io/sahakim-service-portal/';
+                const targetTicket = ticket || (state.tickets && state.tickets[0]);
+                if (!targetTicket) return;
+
+                const colorMap = {
+                    NEW: 16348438,
+                    ASSIGNED: 2450411,
+                    INSPECTION: 165063,
+                    REPAIRING: 14251782,
+                    PENDING_PARTS_APPROVAL: 9647082,
+                    PENDING_SUPERVISOR_APPROVAL: 9647082,
+                    CUSTOMER_ACCEPTANCE: 366185,
+                    CLOSE: 1096065,
+                    REJECTED: 14427686
+                };
+                const color = colorMap[targetTicket.status] || 4674921;
+
+                const eqSummary = (targetTicket.equipmentList || [])
+                    .map(eq => '• ' + (eq.type || 'อุปกรณ์') + ' (' + (eq.brand || '-') + ' ' + (eq.model || '-') + ') - ' + (eq.symptom || '-'))
+                    .join('\\n');
+
+                let totalPartsPrice = 0;
+                (targetTicket.equipmentList || []).forEach(eq => {
+                    (eq.parts || []).forEach(p => {
+                        totalPartsPrice += Number(p.total) || (Number(p.qty) || 0) * (Number(p.price) || 0);
+                    });
+                });
+
+                const fields = [
+                    { name: '📌 สถานะใบงาน', value: '[' + targetTicket.status + ']', inline: true },
+                    { name: '🚨 ความเร่งด่วน', value: targetTicket.urgency || 'ปกติ', inline: true },
+                    { name: '🏢 บริษัท / ลูกค้า', value: targetTicket.company || '-', inline: true },
+                    { name: '📍 หน้างาน', value: targetTicket.location || '-', inline: true },
+                    { name: '👷 ช่างผู้ปฏิบัติงาน', value: targetTicket.assignedTech || 'ยังไม่ระบุช่าง', inline: true },
+                    { name: '📅 วันนัดหมาย', value: targetTicket.confirmedDate || targetTicket.desiredDate || '-', inline: true },
+                    { name: '💰 ยอดอะไหล่', value: totalPartsPrice.toLocaleString() + ' THB', inline: true }
+                ];
+
+                const payload = {
+                    content: eventHeading ? ('🔔 **' + eventHeading + '**') : '🔔 **[แจ้งเตือนระบบงานซ่อม - สหคิมมอเตอร์]**',
+                    embeds: [{
+                        title: '📋 ใบงาน: ' + targetTicket.id + (targetTicket.docNo ? (' (' + targetTicket.docNo + ')') : ''),
+                        description: eqSummary ? ('🔧 **รายการอุปกรณ์:**\\n' + eqSummary) : undefined,
+                        url: portalUrl,
+                        color: color,
+                        fields: fields,
+                        footer: { text: 'SAHA KIM MOTOR CO., LTD. · Service Management System V12.1' },
+                        timestamp: new Date().toISOString()
+                    }]
+                };
+
+                await fetch(discordWebhookUrl.trim(), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } catch (err) {
+                console.warn('Discord dispatch error:', err);
             }
         }
 
@@ -1609,6 +1690,12 @@ export function generateStandaloneHtmlString(
             }
 
             syncToGoogleSheet(lineNotifyText);
+            if (lineNotifyText && discordWebhookUrl) {
+                const firstLine = lineNotifyText.indexOf('\\n') !== -1 ? lineNotifyText.slice(0, lineNotifyText.indexOf('\\n')) : lineNotifyText;
+                const heading = firstLine.replace(/[📢🔔🚨✅👷🔄🎉✍️⏳\\[\\]]/g, '').trim();
+                let matched = state.tickets.find(tk => lineNotifyText.includes(tk.id) || (tk.docNo && lineNotifyText.includes(tk.docNo)));
+                sendDiscordNotificationStandalone(matched || state.tickets[0], heading);
+            }
             pushToCloudSyncServer('STATE_UPDATED');
         }
 
@@ -1746,6 +1833,104 @@ export function generateStandaloneHtmlString(
                 </div>
             \`;
             document.body.appendChild(modalBg);
+        }
+
+        function openDiscordModal() {
+            let existing = document.getElementById('standalone-discord-modal');
+            if (existing) existing.remove();
+
+            let modalBg = document.createElement('div');
+            modalBg.id = 'standalone-discord-modal';
+            modalBg.className = 'fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto';
+            modalBg.innerHTML = \`
+                <div class="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-slate-200 p-5 space-y-4 text-xs sm:text-sm">
+                    <div class="flex justify-between items-center border-b pb-3 border-slate-200">
+                        <div class="flex items-center gap-2">
+                            <span class="w-8 h-8 rounded-lg bg-[#5865F2] text-white flex items-center justify-center text-sm font-bold shadow-sm">
+                                <i class="fa-solid fa-bell"></i>
+                            </span>
+                            <div>
+                                <h3 class="font-bold text-base text-slate-900">ตั้งค่าการแจ้งเตือน Discord Webhook</h3>
+                                <p class="text-[11px] text-slate-500">ฟรี 100% ไม่จำกัดจำนวนข้อความ แจ้งเตือนเข้าห้องแชทของทีมทันที</p>
+                            </div>
+                        </div>
+                        <button onclick="document.getElementById('standalone-discord-modal').remove()" class="text-xl font-bold text-slate-400 hover:text-slate-600 cursor-pointer">&times;</button>
+                    </div>
+
+                    <div class="p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-xs text-indigo-900 space-y-1">
+                        <div class="font-bold">💡 วิธีสร้าง Discord Webhook ใน 3 ขั้นตอน:</div>
+                        <ol class="list-decimal list-inside space-y-0.5 text-slate-700">
+                            <li>เปิด Discord ไปที่ Server ของทีม &gt; กดรูปเฟือง ⚙️ ข้างห้องแชทที่ต้องการ</li>
+                            <li>ไปที่ <strong>Integrations (การรวมระบบ)</strong> &gt; <strong>Webhooks</strong> &gt; <strong>New Webhook</strong></li>
+                            <li>กด <strong>Copy Webhook URL</strong> แล้วนำมาวางในช่องด้านล่าง</li>
+                        </ol>
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <label class="block font-bold text-slate-800">วาง Discord Webhook URL:</label>
+                        <input type="url" id="standalone-discord-input" value="\${discordWebhookUrl || ''}" placeholder="https://discord.com/api/webhooks/..." class="w-full border rounded-xl p-2.5 font-mono text-xs focus:ring-2 focus:ring-[#5865F2] outline-none" />
+                    </div>
+
+                    <div id="discord-test-status" class="hidden p-2.5 rounded-xl border text-xs"></div>
+
+                    <div class="flex flex-wrap justify-between items-center gap-2 pt-2 border-t border-slate-200">
+                        <button type="button" onclick="document.getElementById('standalone-discord-modal').remove()" class="px-3 py-2 text-slate-600 hover:bg-slate-100 rounded-xl font-bold cursor-pointer">ปิด</button>
+                        <div class="flex gap-2">
+                            <button type="button" onclick="testDiscordWebhookStandalone()" class="bg-slate-100 hover:bg-slate-200 text-slate-800 border px-3.5 py-2 rounded-xl font-bold cursor-pointer"><i class="fa-solid fa-paper-plane mr-1 text-[#5865F2]"></i> ทดสอบส่งข้อความ</button>
+                            <button type="button" onclick="saveDiscordWebhookStandalone()" class="bg-[#5865F2] hover:bg-[#4752C4] text-white px-4 py-2 rounded-xl font-bold cursor-pointer shadow-sm"><i class="fa-solid fa-check mr-1"></i> บันทึก</button>
+                        </div>
+                    </div>
+                </div>
+            \`;
+            document.body.appendChild(modalBg);
+        }
+
+        async function saveDiscordWebhookStandalone() {
+            const inp = document.getElementById('standalone-discord-input');
+            const val = inp ? inp.value.trim() : '';
+            if (val && !val.startsWith('https://discord.com/api/webhooks/')) {
+                alert('⚠️ URL ไม่ถูกต้อง ต้องขึ้นต้นด้วย https://discord.com/api/webhooks/...');
+                return;
+            }
+            discordWebhookUrl = val;
+            if (val) {
+                localStorage.setItem('sahakim_discord_webhook_url', val);
+            } else {
+                localStorage.removeItem('sahakim_discord_webhook_url');
+            }
+            updateDiscordBadge();
+            alert('✅ บันทึกการตั้งค่า Discord Webhook เรียบร้อยแล้ว!');
+            const modal = document.getElementById('standalone-discord-modal');
+            if (modal) modal.remove();
+        }
+
+        async function testDiscordWebhookStandalone() {
+            const inp = document.getElementById('standalone-discord-input');
+            const val = inp ? inp.value.trim() : '';
+            if (!val || !val.startsWith('https://discord.com/api/webhooks/')) {
+                alert('⚠️ กรุณากรอก Discord Webhook URL ให้ถูกต้องก่อนกดทดสอบ');
+                return;
+            }
+            const statusEl = document.getElementById('discord-test-status');
+            if (statusEl) {
+                statusEl.className = 'p-2.5 rounded-xl border text-xs bg-blue-50 border-blue-200 text-blue-800';
+                statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> กำลังส่งข้อความทดสอบเข้า Discord...';
+                statusEl.classList.remove('hidden');
+            }
+            const originalUrl = discordWebhookUrl;
+            discordWebhookUrl = val;
+            try {
+                await sendDiscordNotificationStandalone(state.tickets[0], '🧪 [ทดสอบการเชื่อมต่อ] ระบบแจ้งเตือนงานซ่อม สหคิมมอเตอร์');
+                if (statusEl) {
+                    statusEl.className = 'p-2.5 rounded-xl border text-xs bg-emerald-50 border-emerald-200 text-emerald-800 font-bold';
+                    statusEl.innerHTML = '<i class="fa-solid fa-check mr-1"></i> ส่งข้อความทดสอบสำเร็จ! โปรดตรวจสอบใน Discord';
+                }
+            } catch (err) {
+                if (statusEl) {
+                    statusEl.className = 'p-2.5 rounded-xl border text-xs bg-rose-50 border-rose-200 text-rose-800';
+                    statusEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i> ส่งไม่สำเร็จ: ' + (err.message || 'เกิดข้อผิดพลาด');
+                }
+            }
         }
 
         function playAlertSound() {
@@ -2408,6 +2593,7 @@ export function generateStandaloneHtmlString(
 
         function render() {
             updateGsheetBadge();
+            updateDiscordBadge();
             const syncBarEl = document.getElementById('supervisor-sync-bar-container');
             if (syncBarEl) {
                 syncBarEl.classList.toggle('hidden', state.userRole !== 'SUPERVISOR');
@@ -3281,7 +3467,6 @@ export function generateStandaloneHtmlString(
                         </div>
                         \`;
                     })()}
-                    \` : ''}
                 </div>
             \`;
         }
@@ -4326,7 +4511,8 @@ export function downloadStandaloneHtml(
   currentSupervisors: string[] = [
     'หัวหน้าวิศวกรบริการ (Supervisor)',
     'ผู้จัดการฝ่ายบริการ (Service Manager)'
-  ]
+  ],
+  discordWebhookUrl = ''
 ) {
   const htmlContent = generateStandaloneHtmlString(
     currentTickets,
@@ -4339,7 +4525,8 @@ export function downloadStandaloneHtml(
     gasWebAppUrl,
     lineChannelToken,
     lineTargetId,
-    currentSupervisors
+    currentSupervisors,
+    discordWebhookUrl
   );
   const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);

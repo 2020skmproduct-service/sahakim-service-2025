@@ -178,6 +178,10 @@ export const GoogleSheetsIntegrationModal: React.FC<GoogleSheetsIntegrationModal
       showToast('ยังไม่ได้ระบุตาราง Google Sheet ที่จะซิงก์', 'warning');
       return;
     }
+    if (tickets.length === 0) {
+      showToast('ในระบบปัจจุบันมี 0 ใบงาน หากต้องการดึงข้อมูลที่มีอยู่ใน Google Sheet มาแสดง ให้กดปุ่ม "ดึงข้อมูลจาก Google Sheet ลงระบบ" แทนครับ', 'warning');
+      return;
+    }
 
     setIsOperating(true);
     setOperationProgress(`กำลังบันทึกข้อมูล ${tickets.length} ใบงานลงใน Google Sheet...`);
