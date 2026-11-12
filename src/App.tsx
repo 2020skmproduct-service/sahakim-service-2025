@@ -9216,15 +9216,16 @@ export function App() {
                       type="button"
                       onClick={() => {
                         const cleanList = technicians.filter((tc) => !isDemoTechnician(tc));
-                        if (cleanList.length < technicians.length) {
+                        const removedCount = technicians.length - cleanList.length;
+                        if (removedCount > 0) {
                           handleSaveTechniciansList(
                             cleanList,
-                            'ลบรายชื่อช่าง DEMO ออกเรียบร้อยแล้ว'
+                            `ลบรายชื่อช่าง DEMO จำนวน ${removedCount} รายการแล้ว (คงรายชื่อช่างจริงไว้)`
                           );
                         } else {
-                          handleSaveTechniciansList(
-                            [],
-                            'ล้างรายชื่อช่างทั้งหมดเรียบร้อยแล้ว (ช่าง = 0 คน พร้อมลงข้อมูลใหม่)'
+                          showToast(
+                            'ไม่พบรายชื่อช่าง DEMO — คงทะเบียนช่างจริงทั้งหมดไว้ ไม่มีการลบข้อมูล',
+                            'info'
                           );
                         }
                       }}
