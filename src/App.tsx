@@ -211,7 +211,11 @@ export function getChecklistForType(
   if (upper.includes('AERATOR') && templates.AERATOR) return [...templates.AERATOR];
   if ((upper.includes('CONTROL') || upper.includes('PANEL')) && templates.CONTROL)
     return [...templates.CONTROL];
-  return [...(templates.PUMP || CHECKLIST_TEMPLATES.PUMP)];
+  if (upper.includes('PUMP') || upper.includes('ปั๊ม')) {
+    return [...(templates.PUMP || CHECKLIST_TEMPLATES.PUMP)];
+  }
+  // Unknown equipment must not inherit an unrelated pump checklist.
+  return [];
 }
 
 export function getChecklistMetaForTitle(itemText: string): {
