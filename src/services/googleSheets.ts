@@ -205,17 +205,9 @@ export async function syncTicketsToSpreadsheet(
     ...tickets.map((t) => ticketToRowValues(t))
   ];
 
-  // 3. Clear existing content in Tickets sheet to avoid orphaned rows
-  await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${cleanId}/values/Tickets!A1:Z5000:clear`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      }
-    }
-  );
+  // 3. Non-destructive update: write current rows without clearing the sheet.
+  // Existing rows beyond the new dataset are intentionally left untouched;
+  // cleanup must be a separate, explicitly authorized operation.
 
   // 4. Write data to Tickets sheet
   const updateRes = await fetch(
@@ -446,6 +438,52 @@ export async function loadTicketsFromSpreadsheet(
     });
 
   return parsedTickets;
+}
+
+/**
+ * Read-only import of the company's authoritative technician master tab.
+ * This function never writes to the source spreadsheet.
+ */
+export async function loadTechniciansFromSpreadsheet(
+  accessToken: string,
+  spreadsheetId: string
+): Promise<import('../types').Technician[]> {
+  const cleanId = extractSpreadsheetId(spreadsheetId);
+  if (!cleanId) throw new Error('Spreadsheet ID ไม่ถูกต้อง');
+
+  const range = encodeURIComponent("'รายชื่อช่าง_Technicians'!A2:F5000");
+  const res = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${cleanId}/values/${range}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!res.ok) {
+    const errData = await res.json().catch(() => null);
+    throw new Error(errData?.error?.message || `อ่านทะเบียนช่างไม่สำเร็จ (HTTP ${res.status})`);
+  }
+
+  const data = await res.json();
+  const rows: any[][] = Array.isArray(data.values) ? data.values : [];
+  const seen = new Set<string>();
+  return rows
+    .filter((row) => row && row[0] != null && String(row[0]).trim() && row[1] && String(row[1]).trim())
+    .map((row) => {
+      const id = String(row[0]).trim();
+      const name = String(row[1]).trim();
+      const key = id.toLowerCase();
+      if (seen.has(key)) return null;
+      seen.add(key);
+      const rawPin = row[5] == null ? '' : String(row[5]).trim();
+      return {
+        id,
+        name,
+        position: String(row[2] || 'ช่างเทคนิค').trim(),
+        specialization: String(row[3] || '').trim(),
+        employmentStatus: String(row[4] || '').trim(),
+        status: 'Available' as const,
+        pin: rawPin || id
+      };
+    })
+    .filter((tech) => tech !== null) as import('../types').Technician[];
 }
 
 /**

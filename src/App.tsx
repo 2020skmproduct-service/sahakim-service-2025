@@ -177,6 +177,12 @@ export const CHECKLIST_TEMPLATES: Record<string, string[]> = {
     'Phase Protection Relay, Timer & Float/Pressure Switch Test',
     'Power & Control Terminal Torque Tightness & Thermoscan Check',
     'Pilot Lamp, Voltmeter & Ammeter Calibration Check'
+  ],
+  LIGHTING: [
+    'ตรวจสอบสภาพหลอดไฟ ขั้วหลอด และโคมไฟ',
+    'ตรวจสอบแรงดันไฟฟ้าที่จ่ายให้หลอดไฟ',
+    'ตรวจสอบสวิตช์ สายไฟ และจุดต่อทางไฟฟ้า',
+    'ทดสอบการเปิด-ปิดและความสว่างหลังดำเนินการ'
   ]
 };
 
@@ -185,6 +191,14 @@ export function getChecklistForType(
   templates: Record<string, string[]> = CHECKLIST_TEMPLATES
 ): string[] {
   const upper = type.toUpperCase();
+  if (
+    upper.includes('หลอดไฟ') ||
+    upper.includes('LIGHT') ||
+    upper.includes('LAMP') ||
+    upper.includes('LIGHTING')
+  ) {
+    return [...(templates.LIGHTING || CHECKLIST_TEMPLATES.LIGHTING)];
+  }
   if (templates[upper]) return [...templates[upper]];
   if (upper.includes('MOTOR') && templates.MOTOR) return [...templates.MOTOR];
   if (upper.includes('BLOWER') && templates.BLOWER) return [...templates.BLOWER];
@@ -197,7 +211,11 @@ export function getChecklistForType(
   if (upper.includes('AERATOR') && templates.AERATOR) return [...templates.AERATOR];
   if ((upper.includes('CONTROL') || upper.includes('PANEL')) && templates.CONTROL)
     return [...templates.CONTROL];
-  return [...(templates.PUMP || CHECKLIST_TEMPLATES.PUMP)];
+  if (upper.includes('PUMP') || upper.includes('ปั๊ม')) {
+    return [...(templates.PUMP || CHECKLIST_TEMPLATES.PUMP)];
+  }
+  // Unknown equipment must not inherit an unrelated pump checklist.
+  return [];
 }
 
 export function getChecklistMetaForTitle(itemText: string): {
@@ -208,69 +226,69 @@ export function getChecklistMetaForTitle(itemText: string): {
   const lower = (itemText || '').toLowerCase();
   if (lower.includes('insulation') || lower.includes('megger') || lower.includes('dielectric')) {
     return {
-      measuredValue: 'ก่อน: 0.5 / หลัง: 550',
+      measuredValue: '',
       unit: 'MΩ',
       acceptanceCriteria: '≥ 100 MΩ (@500VDC IEEE 43)'
     };
   }
   if (lower.includes('alignment') || lower.includes('runout') || lower.includes('tir')) {
     return {
-      measuredValue: 'ก่อน: 0.18 / หลัง: 0.03',
+      measuredValue: '',
       unit: 'mm',
       acceptanceCriteria: '≤ 0.05 mm (Laser/Dial)'
     };
   }
   if (lower.includes('vibration') && lower.includes('temperature')) {
     return {
-      measuredValue: '1.8 mm/s / 62 °C',
+      measuredValue: '',
       unit: 'mm/s · °C',
       acceptanceCriteria: '≤ 4.5 mm/s (ISO 10816) · ≤ 80 °C'
     };
   }
   if (lower.includes('vibration')) {
     return {
-      measuredValue: 'ก่อน: 6.8 / หลัง: 1.8',
+      measuredValue: '',
       unit: 'mm/s',
       acceptanceCriteria: '≤ 4.5 mm/s (ISO 10816)'
     };
   }
   if (lower.includes('temperature') || lower.includes('thermoscan')) {
     return {
-      measuredValue: 'ก่อน: 88 / หลัง: 62',
+      measuredValue: '',
       unit: '°C',
       acceptanceCriteria: '≤ 80 °C'
     };
   }
   if (lower.includes('clearance') || lower.includes('wear ring')) {
     return {
-      measuredValue: '0.25 / 64 °C',
+      measuredValue: '',
       unit: 'mm · °C',
       acceptanceCriteria: '0.20-0.35 mm · ≤ 80 °C'
     };
   }
   if (lower.includes('pressure') || lower.includes('npsh') || lower.includes('vacuum') || lower.includes('frl')) {
     return {
-      measuredValue: 'ก่อน: 1.8 / หลัง: 4.2',
+      measuredValue: '',
       unit: 'bar',
       acceptanceCriteria: 'ตามพิกัด Nameplate / ไม่เกิด Cavitation'
     };
   }
   if (lower.includes('current') || lower.includes('voltage') || lower.includes('avr') || lower.includes('fla')) {
     return {
-      measuredValue: '382V / 14.2A',
+      measuredValue: '',
       unit: 'V / A',
       acceptanceCriteria: '380V ±5% · กระแส ≤ FLA Nameplate'
     };
   }
   if (lower.includes('winding resistance')) {
     return {
-      measuredValue: '1.24 / 1.24 / 1.25',
+      measuredValue: '',
       unit: 'Ω',
       acceptanceCriteria: 'Phase Unbalance ≤ 2%'
     };
   }
   return {
-    measuredValue: 'ปกติ (ไม่รั่วซึม)',
+    measuredValue: '',
     unit: '-',
     acceptanceCriteria: 'ปกติ / ไม่รั่วซึม / ได้มาตรฐาน'
   };
@@ -805,6 +823,33 @@ export function App() {
       pushOnlineSharedState(imported, userRole || 'SUPERVISOR');
       showToast(`นำเข้าใบงานจาก Google Sheet ทั้งหมด ${imported.length} รายการเรียบร้อยแล้ว`, 'success');
     }
+  };
+
+  // Technician master is imported only on explicit user action from the
+  // authoritative รายชื่อช่าง_Technicians tab. No demo records are synthesized.
+  const handleTechniciansImportedFromGoogleSheets = (imported: Technician[]) => {
+    if (!Array.isArray(imported) || imported.length === 0) return;
+    const uniqueById = new Map<string, Technician>();
+    imported.forEach((tech) => {
+      if (tech.id && tech.name?.trim() && !isDemoTechnician(tech)) {
+        uniqueById.set(tech.id.trim(), {
+          ...tech,
+          name: tech.name.trim(),
+          specialization: tech.specialization || '',
+          position: tech.position || 'ช่างเทคนิค',
+          status: 'Available'
+        });
+      }
+    });
+    const cleanList = Array.from(uniqueById.values());
+    if (cleanList.length === 0) {
+      showToast('ไม่พบรายชื่อช่างจริงที่ถูกต้องใน Master', 'warning');
+      return;
+    }
+    handleSaveTechniciansList(
+      cleanList,
+      `อัปเดตทะเบียนช่างจาก Master บริษัทแล้ว ${cleanList.length} คน`
+    );
   };
 
   const [technicians, setTechnicians] = useState<Technician[]>(() => {
@@ -9216,15 +9261,16 @@ export function App() {
                       type="button"
                       onClick={() => {
                         const cleanList = technicians.filter((tc) => !isDemoTechnician(tc));
-                        if (cleanList.length < technicians.length) {
+                        const removedCount = technicians.length - cleanList.length;
+                        if (removedCount > 0) {
                           handleSaveTechniciansList(
                             cleanList,
-                            'ลบรายชื่อช่าง DEMO ออกเรียบร้อยแล้ว'
+                            `ลบรายชื่อช่าง DEMO จำนวน ${removedCount} รายการแล้ว (คงรายชื่อช่างจริงไว้)`
                           );
                         } else {
-                          handleSaveTechniciansList(
-                            [],
-                            'ล้างรายชื่อช่างทั้งหมดเรียบร้อยแล้ว (ช่าง = 0 คน พร้อมลงข้อมูลใหม่)'
+                          showToast(
+                            'ไม่พบรายชื่อช่าง DEMO — คงทะเบียนช่างจริงทั้งหมดไว้ ไม่มีการลบข้อมูล',
+                            'warning'
                           );
                         }
                       }}
@@ -10066,8 +10112,8 @@ export function App() {
                                     measuredValue: '-',
                                     unit: '-',
                                     acceptanceCriteria: 'ตามมาตรฐานผู้ผลิต',
-                                    beforeStatus: 'NG',
-                                    afterStatus: 'OK'
+                                    beforeStatus: 'N/A',
+                                    afterStatus: 'N/A'
                                   }
                                 ]
                               };
@@ -11274,6 +11320,7 @@ export function App() {
         onClose={() => setIsGoogleSheetsModalOpen(false)}
         tickets={tickets}
         onTicketsImported={handleTicketsImportedFromGoogleSheets}
+        onTechniciansImported={handleTechniciansImportedFromGoogleSheets}
         connectedSheetId={googleSheetId}
         onSetConnectedSheetId={handleSetConnectedSheetId}
         connectedSheetName={googleSheetName}

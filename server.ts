@@ -11,10 +11,10 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Default credentials for Sahakim.service bot (@389fyhbl)
-const DEFAULT_LINE_CHANNEL_ID = process.env.LINE_CHANNEL_ID || '2012276060';
-const DEFAULT_LINE_CHANNEL_SECRET =
-  process.env.LINE_CHANNEL_SECRET || 'db6f7a7f17771925cc3dd2ff0aa38ab5';
+// LINE credentials must be supplied by the deployment environment.
+// Never commit channel credentials or fall back to credentials embedded in source.
+const LINE_CHANNEL_ID = process.env.LINE_CHANNEL_ID?.trim() || '';
+const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET?.trim() || '';
 const LINE_CONFIG_FILE = '/tmp/sahakim-line-config.json';
 const LEGACY_LINE_CONFIG_FILE = path.join(__dirname, '.line-config.json');
 
@@ -106,6 +106,9 @@ function saveLineConfig(cfg: LineStoredConfig) {
 }
 
 async function getOAuthAccessToken(forceRefresh = false): Promise<string> {
+  if (!LINE_CHANNEL_ID || !LINE_CHANNEL_SECRET) {
+    throw new Error('LINE_CHANNEL_ID and LINE_CHANNEL_SECRET must be configured in the server environment.');
+  }
   const cfg = loadLineConfig();
   const now = Date.now();
   if (
@@ -119,8 +122,8 @@ async function getOAuthAccessToken(forceRefresh = false): Promise<string> {
 
   const params = new URLSearchParams();
   params.append('grant_type', 'client_credentials');
-  params.append('client_id', DEFAULT_LINE_CHANNEL_ID);
-  params.append('client_secret', DEFAULT_LINE_CHANNEL_SECRET);
+  params.append('client_id', LINE_CHANNEL_ID);
+  params.append('client_secret', LINE_CHANNEL_SECRET);
 
   const response = await fetch('https://api.line.me/v2/oauth/accessToken', {
     method: 'POST',
@@ -164,6 +167,38 @@ async function startServer() {
   // Health check
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok' });
+  });
+
+  // Safe LINE readiness check: never return credentials, tokens, or chat IDs.
+  app.get('/api/line/status', async (_req, res) => {
+    const channelIdConfigured = Boolean(LINE_CHANNEL_ID);
+    const channelSecretConfigured = Boolean(LINE_CHANNEL_SECRET);
+    if (!channelIdConfigured || !channelSecretConfigured) {
+      return res.status(503).json({
+        status: 'not_configured',
+        channelIdConfigured,
+        channelSecretConfigured,
+        oauthReady: false
+      });
+    }
+    try {
+      await getOAuthAccessToken(false);
+      return res.json({
+        status: 'ready',
+        channelIdConfigured: true,
+        channelSecretConfigured: true,
+        oauthReady: true,
+        webhookRelayConfigured: Boolean(PUBLIC_WEBHOOK_RELAY_URL)
+      });
+    } catch {
+      return res.status(503).json({
+        status: 'authentication_failed',
+        channelIdConfigured: true,
+        channelSecretConfigured: true,
+        oauthReady: false,
+        message: 'ตรวจสอบ Channel ID และ Channel Secret ใน Render อีกครั้ง'
+      });
+    }
   });
 
   const PUBLIC_WEBHOOK_RELAY_URL =
@@ -722,7 +757,7 @@ async function startServer() {
       const token = await getValidLineAccessToken();
       res.json({
         status: 'ok',
-        channelId: DEFAULT_LINE_CHANNEL_ID,
+        channelId: LINE_CHANNEL_ID,
         botBasicId: '@389fyhbl',
         webhookRelayUrl: PUBLIC_WEBHOOK_RELAY_URL,
         hasValidToken: Boolean(token),
