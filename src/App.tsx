@@ -821,6 +821,33 @@ export function App() {
     }
   };
 
+  // Technician master is imported only on explicit user action from the
+  // authoritative รายชื่อช่าง_Technicians tab. No demo records are synthesized.
+  const handleTechniciansImportedFromGoogleSheets = (imported: Technician[]) => {
+    if (!Array.isArray(imported) || imported.length === 0) return;
+    const uniqueById = new Map<string, Technician>();
+    imported.forEach((tech) => {
+      if (tech.id && tech.name?.trim() && !isDemoTechnician(tech)) {
+        uniqueById.set(tech.id.trim(), {
+          ...tech,
+          name: tech.name.trim(),
+          specialization: tech.specialization || '',
+          position: tech.position || 'ช่างเทคนิค',
+          status: 'Available'
+        });
+      }
+    });
+    const cleanList = Array.from(uniqueById.values());
+    if (cleanList.length === 0) {
+      showToast('ไม่พบรายชื่อช่างจริงที่ถูกต้องใน Master', 'warning');
+      return;
+    }
+    handleSaveTechniciansList(
+      cleanList,
+      `อัปเดตทะเบียนช่างจาก Master บริษัทแล้ว ${cleanList.length} คน`
+    );
+  };
+
   const [technicians, setTechnicians] = useState<Technician[]>(() => {
     const saved = localStorage.getItem('sahakim_technicians');
     if (saved) {
@@ -11289,6 +11316,7 @@ export function App() {
         onClose={() => setIsGoogleSheetsModalOpen(false)}
         tickets={tickets}
         onTicketsImported={handleTicketsImportedFromGoogleSheets}
+        onTechniciansImported={handleTechniciansImportedFromGoogleSheets}
         connectedSheetId={googleSheetId}
         onSetConnectedSheetId={handleSetConnectedSheetId}
         connectedSheetName={googleSheetName}
