@@ -169,6 +169,38 @@ async function startServer() {
     res.json({ status: 'ok' });
   });
 
+  // Safe LINE readiness check: never return credentials, tokens, or chat IDs.
+  app.get('/api/line/status', async (_req, res) => {
+    const channelIdConfigured = Boolean(LINE_CHANNEL_ID);
+    const channelSecretConfigured = Boolean(LINE_CHANNEL_SECRET);
+    if (!channelIdConfigured || !channelSecretConfigured) {
+      return res.status(503).json({
+        status: 'not_configured',
+        channelIdConfigured,
+        channelSecretConfigured,
+        oauthReady: false
+      });
+    }
+    try {
+      await getOAuthAccessToken(false);
+      return res.json({
+        status: 'ready',
+        channelIdConfigured: true,
+        channelSecretConfigured: true,
+        oauthReady: true,
+        webhookRelayConfigured: Boolean(PUBLIC_WEBHOOK_RELAY_URL)
+      });
+    } catch {
+      return res.status(503).json({
+        status: 'authentication_failed',
+        channelIdConfigured: true,
+        channelSecretConfigured: true,
+        oauthReady: false,
+        message: 'ตรวจสอบ Channel ID และ Channel Secret ใน Render อีกครั้ง'
+      });
+    }
+  });
+
   const PUBLIC_WEBHOOK_RELAY_URL =
     process.env.LINE_WEBHOOK_RELAY_URL || 'https://smee.io/sahakim-line-2012276060';
 
