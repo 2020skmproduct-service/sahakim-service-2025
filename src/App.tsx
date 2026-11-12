@@ -222,69 +222,69 @@ export function getChecklistMetaForTitle(itemText: string): {
   const lower = (itemText || '').toLowerCase();
   if (lower.includes('insulation') || lower.includes('megger') || lower.includes('dielectric')) {
     return {
-      measuredValue: 'ก่อน: 0.5 / หลัง: 550',
+      measuredValue: '',
       unit: 'MΩ',
       acceptanceCriteria: '≥ 100 MΩ (@500VDC IEEE 43)'
     };
   }
   if (lower.includes('alignment') || lower.includes('runout') || lower.includes('tir')) {
     return {
-      measuredValue: 'ก่อน: 0.18 / หลัง: 0.03',
+      measuredValue: '',
       unit: 'mm',
       acceptanceCriteria: '≤ 0.05 mm (Laser/Dial)'
     };
   }
   if (lower.includes('vibration') && lower.includes('temperature')) {
     return {
-      measuredValue: '1.8 mm/s / 62 °C',
+      measuredValue: '',
       unit: 'mm/s · °C',
       acceptanceCriteria: '≤ 4.5 mm/s (ISO 10816) · ≤ 80 °C'
     };
   }
   if (lower.includes('vibration')) {
     return {
-      measuredValue: 'ก่อน: 6.8 / หลัง: 1.8',
+      measuredValue: '',
       unit: 'mm/s',
       acceptanceCriteria: '≤ 4.5 mm/s (ISO 10816)'
     };
   }
   if (lower.includes('temperature') || lower.includes('thermoscan')) {
     return {
-      measuredValue: 'ก่อน: 88 / หลัง: 62',
+      measuredValue: '',
       unit: '°C',
       acceptanceCriteria: '≤ 80 °C'
     };
   }
   if (lower.includes('clearance') || lower.includes('wear ring')) {
     return {
-      measuredValue: '0.25 / 64 °C',
+      measuredValue: '',
       unit: 'mm · °C',
       acceptanceCriteria: '0.20-0.35 mm · ≤ 80 °C'
     };
   }
   if (lower.includes('pressure') || lower.includes('npsh') || lower.includes('vacuum') || lower.includes('frl')) {
     return {
-      measuredValue: 'ก่อน: 1.8 / หลัง: 4.2',
+      measuredValue: '',
       unit: 'bar',
       acceptanceCriteria: 'ตามพิกัด Nameplate / ไม่เกิด Cavitation'
     };
   }
   if (lower.includes('current') || lower.includes('voltage') || lower.includes('avr') || lower.includes('fla')) {
     return {
-      measuredValue: '382V / 14.2A',
+      measuredValue: '',
       unit: 'V / A',
       acceptanceCriteria: '380V ±5% · กระแส ≤ FLA Nameplate'
     };
   }
   if (lower.includes('winding resistance')) {
     return {
-      measuredValue: '1.24 / 1.24 / 1.25',
+      measuredValue: '',
       unit: 'Ω',
       acceptanceCriteria: 'Phase Unbalance ≤ 2%'
     };
   }
   return {
-    measuredValue: 'ปกติ (ไม่รั่วซึม)',
+    measuredValue: '',
     unit: '-',
     acceptanceCriteria: 'ปกติ / ไม่รั่วซึม / ได้มาตรฐาน'
   };
@@ -10108,8 +10108,8 @@ export function App() {
                                     measuredValue: '-',
                                     unit: '-',
                                     acceptanceCriteria: 'ตามมาตรฐานผู้ผลิต',
-                                    beforeStatus: 'NG',
-                                    afterStatus: 'OK'
+                                    beforeStatus: 'N/A',
+                                    afterStatus: 'N/A'
                                   }
                                 ]
                               };
