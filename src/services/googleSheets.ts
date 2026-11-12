@@ -483,7 +483,7 @@ export async function loadTechniciansFromSpreadsheet(
         pin: rawPin || id
       };
     })
-    .filter((tech): tech is import('../types').Technician => tech !== null);
+    .filter((tech) => tech !== null) as import('../types').Technician[];
 }
 
 /**
