@@ -478,6 +478,7 @@ export async function loadTechniciansFromSpreadsheet(
         name,
         position: String(row[2] || 'ช่างเทคนิค').trim(),
         specialization: String(row[3] || '').trim(),
+        employmentStatus: String(row[4] || '').trim(),
         status: 'Available' as const,
         pin: rawPin || id
       };
