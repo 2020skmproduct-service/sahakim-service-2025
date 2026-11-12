@@ -205,17 +205,9 @@ export async function syncTicketsToSpreadsheet(
     ...tickets.map((t) => ticketToRowValues(t))
   ];
 
-  // 3. Clear existing content in Tickets sheet to avoid orphaned rows
-  await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${cleanId}/values/Tickets!A1:Z5000:clear`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      }
-    }
-  );
+  // 3. Non-destructive update: write current rows without clearing the sheet.
+  // Existing rows beyond the new dataset are intentionally left untouched;
+  // cleanup must be a separate, explicitly authorized operation.
 
   // 4. Write data to Tickets sheet
   const updateRes = await fetch(
