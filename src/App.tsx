@@ -9266,7 +9266,7 @@ export function App() {
                         } else {
                           showToast(
                             'ไม่พบรายชื่อช่าง DEMO — คงทะเบียนช่างจริงทั้งหมดไว้ ไม่มีการลบข้อมูล',
-                            'info'
+                            'warning'
                           );
                         }
                       }}
