@@ -177,6 +177,12 @@ export const CHECKLIST_TEMPLATES: Record<string, string[]> = {
     'Phase Protection Relay, Timer & Float/Pressure Switch Test',
     'Power & Control Terminal Torque Tightness & Thermoscan Check',
     'Pilot Lamp, Voltmeter & Ammeter Calibration Check'
+  ],
+  LIGHTING: [
+    'ตรวจสอบสภาพหลอดไฟ ขั้วหลอด และโคมไฟ',
+    'ตรวจสอบแรงดันไฟฟ้าที่จ่ายให้หลอดไฟ',
+    'ตรวจสอบสวิตช์ สายไฟ และจุดต่อทางไฟฟ้า',
+    'ทดสอบการเปิด-ปิดและความสว่างหลังดำเนินการ'
   ]
 };
 
@@ -185,6 +191,14 @@ export function getChecklistForType(
   templates: Record<string, string[]> = CHECKLIST_TEMPLATES
 ): string[] {
   const upper = type.toUpperCase();
+  if (
+    upper.includes('หลอดไฟ') ||
+    upper.includes('LIGHT') ||
+    upper.includes('LAMP') ||
+    upper.includes('LIGHTING')
+  ) {
+    return [...(templates.LIGHTING || CHECKLIST_TEMPLATES.LIGHTING)];
+  }
   if (templates[upper]) return [...templates[upper]];
   if (upper.includes('MOTOR') && templates.MOTOR) return [...templates.MOTOR];
   if (upper.includes('BLOWER') && templates.BLOWER) return [...templates.BLOWER];
