@@ -91,6 +91,7 @@ export interface Technician {
   name: string;
   position?: string;
   specialization: string;
+  employmentStatus?: string;
   status: 'Available' | 'On Duty';
   pin: string;
 }
