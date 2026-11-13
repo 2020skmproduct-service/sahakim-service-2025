@@ -1,4 +1,5 @@
 import express from 'express';
+import { createHmac, timingSafeEqual } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -162,7 +163,12 @@ async function startServer() {
     next();
   });
 
-  app.use(express.json({ limit: '10mb' }));
+  app.use(express.json({
+    limit: '10mb',
+    verify: (req: express.Request, _res: express.Response, buf: Buffer) => {
+      (req as express.Request & { rawBody?: Buffer }).rawBody = Buffer.from(buf);
+    }
+  }));
 
   // Health check
   app.get('/api/health', (_req, res) => {
@@ -201,8 +207,9 @@ async function startServer() {
     }
   });
 
-  const PUBLIC_WEBHOOK_RELAY_URL =
-    process.env.LINE_WEBHOOK_RELAY_URL || 'https://smee.io/sahakim-line-2012276060';
+  const configuredRelayUrl = process.env.LINE_WEBHOOK_RELAY_URL?.trim();
+  const PUBLIC_WEBHOOK_RELAY_URL = configuredRelayUrl ||
+    `${(process.env.RENDER_EXTERNAL_URL || 'https://sahakim-service-2025.onrender.com').replace(/\\/$/, '')}/api/line/webhook`;
 
   async function processLineWebhookEvents(events: any[]) {
     if (!Array.isArray(events) || events.length === 0) return;
@@ -528,12 +535,23 @@ async function startServer() {
 
   app.post('/api/line/webhook', async (req, res) => {
     try {
+      const signature = req.header('x-line-signature') || '';
+      const rawBody = (req as express.Request & { rawBody?: Buffer }).rawBody;
+      if (!LINE_CHANNEL_SECRET || !signature || !rawBody) {
+        return res.status(401).json({ status: 'unauthorized' });
+      }
+      const expected = createHmac('sha256', LINE_CHANNEL_SECRET).update(rawBody).digest('base64');
+      const receivedBuffer = Buffer.from(signature);
+      const expectedBuffer = Buffer.from(expected);
+      if (receivedBuffer.length !== expectedBuffer.length || !timingSafeEqual(receivedBuffer, expectedBuffer)) {
+        return res.status(401).json({ status: 'invalid_signature' });
+      }
       const events = Array.isArray(req.body?.events) ? req.body.events : [];
       await processLineWebhookEvents(events);
       return res.status(200).json({ status: 'ok' });
     } catch (err) {
       console.error('LINE Webhook Error:', err);
-      return res.status(200).json({ status: 'ok' });
+      return res.status(500).json({ status: 'error' });
     }
   });
 
@@ -1147,7 +1165,7 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://0.0.0.0:${PORT}`);
     setTimeout(() => {
-      startWebhookRelayListener();
+      if (configuredRelayUrl) startWebhookRelayListener();
       ensureLineWebhookEndpoint().catch((err) => {
         console.error('Background LINE endpoint init error:', err);
       });
