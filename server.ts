@@ -1,4 +1,5 @@
 import express from 'express';
+import { createHmac, timingSafeEqual } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -11,10 +12,10 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Default credentials for Sahakim.service bot (@389fyhbl)
-const DEFAULT_LINE_CHANNEL_ID = process.env.LINE_CHANNEL_ID || '2012276060';
-const DEFAULT_LINE_CHANNEL_SECRET =
-  process.env.LINE_CHANNEL_SECRET || 'db6f7a7f17771925cc3dd2ff0aa38ab5';
+// LINE credentials must be supplied by the deployment environment.
+// Never commit channel credentials or fall back to credentials embedded in source.
+const LINE_CHANNEL_ID = process.env.LINE_CHANNEL_ID?.trim() || '';
+const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET?.trim() || '';
 const LINE_CONFIG_FILE = '/tmp/sahakim-line-config.json';
 const LEGACY_LINE_CONFIG_FILE = path.join(__dirname, '.line-config.json');
 
@@ -106,6 +107,9 @@ function saveLineConfig(cfg: LineStoredConfig) {
 }
 
 async function getOAuthAccessToken(forceRefresh = false): Promise<string> {
+  if (!LINE_CHANNEL_ID || !LINE_CHANNEL_SECRET) {
+    throw new Error('LINE_CHANNEL_ID and LINE_CHANNEL_SECRET must be configured in the server environment.');
+  }
   const cfg = loadLineConfig();
   const now = Date.now();
   if (
@@ -119,8 +123,8 @@ async function getOAuthAccessToken(forceRefresh = false): Promise<string> {
 
   const params = new URLSearchParams();
   params.append('grant_type', 'client_credentials');
-  params.append('client_id', DEFAULT_LINE_CHANNEL_ID);
-  params.append('client_secret', DEFAULT_LINE_CHANNEL_SECRET);
+  params.append('client_id', LINE_CHANNEL_ID);
+  params.append('client_secret', LINE_CHANNEL_SECRET);
 
   const response = await fetch('https://api.line.me/v2/oauth/accessToken', {
     method: 'POST',
@@ -159,15 +163,53 @@ async function startServer() {
     next();
   });
 
-  app.use(express.json({ limit: '10mb' }));
+  app.use(express.json({
+    limit: '10mb',
+    verify: (req: express.Request, _res: express.Response, buf: Buffer) => {
+      (req as express.Request & { rawBody?: Buffer }).rawBody = Buffer.from(buf);
+    }
+  }));
 
   // Health check
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok' });
   });
 
-  const PUBLIC_WEBHOOK_RELAY_URL =
-    process.env.LINE_WEBHOOK_RELAY_URL || 'https://smee.io/sahakim-line-2012276060';
+  // Safe LINE readiness check: never return credentials, tokens, or chat IDs.
+  app.get('/api/line/status', async (_req, res) => {
+    const channelIdConfigured = Boolean(LINE_CHANNEL_ID);
+    const channelSecretConfigured = Boolean(LINE_CHANNEL_SECRET);
+    if (!channelIdConfigured || !channelSecretConfigured) {
+      return res.status(503).json({
+        status: 'not_configured',
+        channelIdConfigured,
+        channelSecretConfigured,
+        oauthReady: false
+      });
+    }
+    try {
+      await getOAuthAccessToken(false);
+      return res.json({
+        status: 'ready',
+        channelIdConfigured: true,
+        channelSecretConfigured: true,
+        oauthReady: true,
+        webhookRelayConfigured: Boolean(PUBLIC_WEBHOOK_RELAY_URL)
+      });
+    } catch {
+      return res.status(503).json({
+        status: 'authentication_failed',
+        channelIdConfigured: true,
+        channelSecretConfigured: true,
+        oauthReady: false,
+        message: 'ตรวจสอบ Channel ID และ Channel Secret ใน Render อีกครั้ง'
+      });
+    }
+  });
+
+  const configuredRelayUrl = process.env.LINE_WEBHOOK_RELAY_URL?.trim();
+  const PUBLIC_WEBHOOK_RELAY_URL = configuredRelayUrl ||
+    `${(process.env.RENDER_EXTERNAL_URL || 'https://sahakim-service-2025.onrender.com').replace(/\/$/, '')}/api/line/webhook`;
 
   async function processLineWebhookEvents(events: any[]) {
     if (!Array.isArray(events) || events.length === 0) return;
@@ -493,12 +535,23 @@ async function startServer() {
 
   app.post('/api/line/webhook', async (req, res) => {
     try {
+      const signature = req.header('x-line-signature') || '';
+      const rawBody = (req as express.Request & { rawBody?: Buffer }).rawBody;
+      if (!LINE_CHANNEL_SECRET || !signature || !rawBody) {
+        return res.status(401).json({ status: 'unauthorized' });
+      }
+      const expected = createHmac('sha256', LINE_CHANNEL_SECRET).update(rawBody).digest('base64');
+      const receivedBuffer = Buffer.from(signature);
+      const expectedBuffer = Buffer.from(expected);
+      if (receivedBuffer.length !== expectedBuffer.length || !timingSafeEqual(receivedBuffer, expectedBuffer)) {
+        return res.status(401).json({ status: 'invalid_signature' });
+      }
       const events = Array.isArray(req.body?.events) ? req.body.events : [];
       await processLineWebhookEvents(events);
       return res.status(200).json({ status: 'ok' });
     } catch (err) {
       console.error('LINE Webhook Error:', err);
-      return res.status(200).json({ status: 'ok' });
+      return res.status(500).json({ status: 'error' });
     }
   });
 
@@ -722,7 +775,7 @@ async function startServer() {
       const token = await getValidLineAccessToken();
       res.json({
         status: 'ok',
-        channelId: DEFAULT_LINE_CHANNEL_ID,
+        channelId: LINE_CHANNEL_ID,
         botBasicId: '@389fyhbl',
         webhookRelayUrl: PUBLIC_WEBHOOK_RELAY_URL,
         hasValidToken: Boolean(token),
@@ -1112,7 +1165,7 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://0.0.0.0:${PORT}`);
     setTimeout(() => {
-      startWebhookRelayListener();
+      if (configuredRelayUrl) startWebhookRelayListener();
       ensureLineWebhookEndpoint().catch((err) => {
         console.error('Background LINE endpoint init error:', err);
       });

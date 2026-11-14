@@ -31,6 +31,7 @@ import {
   createSahakimSpreadsheet,
   syncTicketsToSpreadsheet,
   loadTicketsFromSpreadsheet,
+  loadTechniciansFromSpreadsheet,
   listUserSpreadsheets,
   extractSpreadsheetId,
   SpreadsheetFileInfo
@@ -41,6 +42,7 @@ interface GoogleSheetsIntegrationModalProps {
   onClose: () => void;
   tickets: ServiceTicket[];
   onTicketsImported: (importedTickets: ServiceTicket[]) => void;
+  onTechniciansImported: (technicians: import('../types').Technician[]) => void;
   connectedSheetId: string;
   onSetConnectedSheetId: (id: string, name?: string) => void;
   connectedSheetName: string;
@@ -56,6 +58,7 @@ export const GoogleSheetsIntegrationModal: React.FC<GoogleSheetsIntegrationModal
   onClose,
   tickets,
   onTicketsImported,
+  onTechniciansImported,
   connectedSheetId,
   onSetConnectedSheetId,
   connectedSheetName,
@@ -192,6 +195,36 @@ export const GoogleSheetsIntegrationModal: React.FC<GoogleSheetsIntegrationModal
       showToast(`ซิงก์ข้อมูล ${tickets.length} ใบงานลงใน Google Sheet สำเร็จเรียบร้อย!`, 'success');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'ซิงก์ข้อมูลไม่สำเร็จ';
+      showToast(msg, 'error');
+    } finally {
+      setIsOperating(false);
+      setOperationProgress('');
+    }
+  };
+
+  // Read-only import of the authoritative technician master sheet
+  const handleImportTechnicians = async () => {
+    const token = cachedToken || (await getAccessToken());
+    if (!token) {
+      showToast('กรุณาเข้าสู่ระบบ Google ก่อนนำเข้าทะเบียนช่าง', 'warning');
+      return;
+    }
+    if (!connectedSheetId) {
+      showToast('ยังไม่ได้เชื่อมต่อ Google Sheet', 'warning');
+      return;
+    }
+    setIsOperating(true);
+    setOperationProgress('กำลังอ่านทะเบียนช่างจากรายชื่อช่าง_Technicians (ไม่แก้ไขชีตต้นทาง)...');
+    try {
+      const imported = await loadTechniciansFromSpreadsheet(token, connectedSheetId);
+      if (imported.length === 0) {
+        showToast('ไม่พบรายชื่อช่างในแท็บรายชื่อช่าง_Technicians', 'warning');
+        return;
+      }
+      onTechniciansImported(imported);
+      showToast(`นำเข้ารายชื่อช่างจริง ${imported.length} คนสำเร็จ (อ่านอย่างเดียว ไม่เขียนทับชีต)`, 'success');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'อ่านทะเบียนช่างไม่สำเร็จ';
       showToast(msg, 'error');
     } finally {
       setIsOperating(false);
@@ -431,6 +464,15 @@ export const GoogleSheetsIntegrationModal: React.FC<GoogleSheetsIntegrationModal
                 >
                   <DownloadCloud className="w-4 h-4 text-teal-600" />
                   ดึงข้อมูลจาก Google Sheet ลงระบบ
+                </button>
+                <button
+                  type="button"
+                  onClick={handleImportTechnicians}
+                  disabled={isOperating || !currentUser}
+                  className="sm:col-span-2 flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 font-bold py-2.5 px-4 rounded-xl text-xs shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <DownloadCloud className="w-4 h-4" />
+                  นำเข้าทะเบียนช่างจากรายชื่อช่าง_Technicians (อ่านอย่างเดียว)
                 </button>
               </div>
             </div>
