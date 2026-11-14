@@ -368,6 +368,12 @@ async function startServer() {
   }
 
   async function ensureLineWebhookEndpoint() {
+    // Staging must never take ownership of the production LINE OA webhook.
+    // Keep the existing production behavior unless explicitly disabled per environment.
+    if (process.env.LINE_WEBHOOK_MANAGE_ENDPOINT === 'false') {
+      console.log('[LINE] Webhook endpoint management disabled for this environment.');
+      return;
+    }
     try {
       const token = await getValidLineAccessToken();
       const getRes = await fetch('https://api.line.me/v2/bot/channel/webhook/endpoint', {
