@@ -209,7 +209,7 @@ async function startServer() {
 
   const configuredRelayUrl = process.env.LINE_WEBHOOK_RELAY_URL?.trim();
   const PUBLIC_WEBHOOK_RELAY_URL = configuredRelayUrl ||
-    `${(process.env.RENDER_EXTERNAL_URL || 'https://sahakim-service-2025.onrender.com').replace(/\\/$/, '')}/api/line/webhook`;
+    `${(process.env.RENDER_EXTERNAL_URL || 'https://sahakim-service-2025.onrender.com').replace(/\/$/, '')}/api/line/webhook`;
 
   async function processLineWebhookEvents(events: any[]) {
     if (!Array.isArray(events) || events.length === 0) return;
